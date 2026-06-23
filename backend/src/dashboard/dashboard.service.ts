@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Octokit } from '@octokit/rest';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PipelinesGateway } from './pipelines.gateway';
+import { DockerLogsGateway } from './dockerLogs.gateway';
 import Docker from 'dockerode';
 
 @Injectable()
@@ -11,8 +12,29 @@ export class DashboardService {
   private lastData: string = ''
   private docker: Docker;
 
-  constructor(private pipelinesGateway: PipelinesGateway) {
+  constructor(private pipelinesGateway: PipelinesGateway, private dockerLogsGateway: DockerLogsGateway) {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' } as Docker.DockerOptions);
+  }
+
+  async getDockerLogs() {
+    const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
+
+    const logs: { [key: string]: string } = {};
+
+    for (const container of containers) {
+      const containerInstance = this.docker.getContainer(container.Id);
+      const logStream = await containerInstance.logs({
+        stdout: true,
+        stderr: true,
+        follow: false,
+        tail: 100, // Get the last 100 lines,
+        timestamps: true,
+      });
+
+      logs[container.Names?.[0]?.replace('/', '') ?? 'unknown'] = logStream.toString('utf-8');
+    }
+    
+    return logs;
   }
 
   async getContainers() {
@@ -71,8 +93,6 @@ export class DashboardService {
     }))
   }
 
-
-
   @Cron(CronExpression.EVERY_30_SECONDS)
   async checkPipelines() {
     this.logger.log('Checking pipelines . . .')
@@ -86,6 +106,21 @@ export class DashboardService {
       }
     } catch (error) {
       this.logger.error('Error checking pipelines')
+    }
+  }
+
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async checkDockerLogs() {
+    try{
+      const logs = await this.getDockerLogs()
+      const data = JSON.stringify(logs)
+      console.log(data)
+      if (data !== this.lastData) {
+        this.logger.log('Docker logs changed, emitting update')
+        this.dockerLogsGateway.emitDocketLogsUpdate(logs)
+      }
+    }catch(error){
+      this.logger.error('Error checking docker logs')
     }
   }
 }

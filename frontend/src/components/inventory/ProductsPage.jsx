@@ -123,6 +123,7 @@ export default function ProductsPage() {
                     <Card 
                         key={p.id} 
                         className={`max-w-md ${p.stock <= p.minStock ? 'border-red-500' : ''}`}
+                        onClick={() => console.log('Clicked product', p)}
                     >
                         <CardHeader className='relative flex flex-col gap-4'>
                             <div className='absolute right-1.5 -top-2 z-40'>
@@ -139,8 +140,16 @@ export default function ProductsPage() {
                                     </PopoverContent>
                                 </Popover>
                             </div>
-
-                            <Package className='w-36 h-36 shadow-md mx-auto' />
+                            {
+                                p?.imageURL ? 
+                                <img
+                                    src={p.imageURL}
+                                    alt="Producto"
+                                    className="w-36 h-36 object-contain rounded-md mx-auto"
+                                />
+                                : 
+                                <Package className='w-36 h-36 shadow-md mx-auto' />
+                            }
                             <CardTitle className='flex flex-col'>
                                 <span className='text-xs'>{p?.supplier?.name || 'Proveedor no especificado'}</span>
                                 <span className='text-lg'>{p?.name}</span>

@@ -5,6 +5,7 @@ import PipelinesCard from "./components/dashboard/PipelinesCard";
 import ServerHealthCard from "./components/dashboard/ServerHealthCard";
 import ContainersCard from "./components/dashboard/ContainersCard";
 import AlertsCard from "./components/dashboard/AlertsCard";
+import DockerLogsCard from "./components/dashboard/DockerLogsCard";
 import ProductsPage from "./components/inventory/ProductsPage";
 import CategoriesPage from "./components/inventory/CategoriesPage";
 import SuppliersPage from "./components/inventory/SuppliersPage";
@@ -13,7 +14,7 @@ import MovementsPage from "./components/inventory/MovementsPage";
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activePage, setActivePage] = useState("dashboard");
+  const [activePage, setActivePage] = useState("metrics");
 
   const handleLogout = async () => {
     await fetch(`${import.meta.env.VITE_BACKEND_URL}/auth/logout`, {
@@ -44,7 +45,7 @@ export default function App() {
 
   const renderPage = () => {
     switch(activePage) {
-      case 'dashboard':
+      case 'metrics':
         return (
           <div className="flex flex-wrap justify-center gap-5 w-full">
             <PipelinesCard />
@@ -55,6 +56,7 @@ export default function App() {
               )
             }
             <AlertsCard />
+            <DockerLogsCard />
           </div>
         )
       case 'products':    return <ProductsPage />

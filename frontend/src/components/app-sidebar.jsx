@@ -38,11 +38,11 @@ export function AppSidebar({ user, handleLogout, onNavigate, activePage }) {
     ],
     navMain: [
       {
-        title: "Dashboard",
+        title: "Metrics",
         url: "#",
         icon: <LayoutDashboardIcon />,
-        isActive: activePage === 'dashboard',
-        onClick: () => onNavigate('dashboard'),
+        isActive: activePage === 'metrics',
+        onClick: () => onNavigate('metrics'),
         // items: [],
       },
       {
@@ -71,7 +71,7 @@ export function AppSidebar({ user, handleLogout, onNavigate, activePage }) {
 
             const noChildren = () => (
               <SidebarGroup key={index}>
-                <SidebarMenuButton onClick={() => onNavigate('dashboard')} asChild>
+                <SidebarMenuButton onClick={() => onNavigate('metrics')} asChild>
                   <a href="#">
                     {el?.icon}
                     <span>{ el?.title }</span>

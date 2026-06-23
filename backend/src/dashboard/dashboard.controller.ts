@@ -23,4 +23,10 @@ export class DashboardController {
   getContainers() {
     return this.dashboardService.getContainers()
   }
+  
+  @Get('dockerLogs')
+  @UseGuards(JwtAuthGuard)
+  getDockerLogs(){
+    return this.dashboardService.getDockerLogs()
+  }
 }

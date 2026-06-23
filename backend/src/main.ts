@@ -23,7 +23,8 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:5173', // React development server
-      'https://stunning-space-lamp-v5vw5qg7xr729rx-5173.app.github.dev', // Codespaces URL for React (replace with your actual Codespaces URL)
+      'https://turbo-rotary-phone-9x9wxjq4p69h956v-3000.app.github.dev', // Codespaces URL for React (replace with your actual Codespaces URL)
+      'https://turbo-rotary-phone-9x9wxjq4p69h956v-5173.app.github.dev', // Codespaces URL for React (replace with your actual Codespaces URL)
       process.env.NODE_ENV == 'production' && 'https://nestjsreactdocker-project.onrender.com'
     ], // Allow all origins for development
     credentials: true, // Enable for JWT in cookies
