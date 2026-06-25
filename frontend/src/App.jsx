@@ -47,16 +47,18 @@ export default function App() {
     switch(activePage) {
       case 'metrics':
         return (
-          <div className="flex flex-wrap justify-center gap-5 w-full">
-            <PipelinesCard />
-            <ServerHealthCard />
-            {
-              import.meta.env.VITE_NODE_ENV === 'development' && (
-                <ContainersCard />
-              )
-            }
-            <AlertsCard />
+          <div className="flex flex-col gap-4 w-full">
             <DockerLogsCard />
+            <div className="flex flex-wrap justify-center gap-5 w-full">
+              <PipelinesCard />
+              <ServerHealthCard />
+              {
+                import.meta.env.VITE_NODE_ENV === 'development' && (
+                  <ContainersCard />
+                )
+              }
+              {/* <AlertsCard /> */}
+            </div>
           </div>
         )
       case 'products':    return <ProductsPage />

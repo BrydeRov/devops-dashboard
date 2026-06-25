@@ -16,10 +16,43 @@ export class DashboardService {
     this.docker = new Docker({ socketPath: '/var/run/docker.sock' } as Docker.DockerOptions);
   }
 
+  private parseDockerLogs(raw: string): { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] {
+    const lines = raw.split('\n');
+    const result: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] = [];
+
+    for (const line of lines) {
+      if (!line || line.length < 8) continue;
+
+      // Detectar stream type del primer byte ANTES de limpiar
+      const streamType = line.charCodeAt(0) === 2 ? 'stderr' : 'stdout';
+
+      // Remover header binario de 8 bytes (Docker multiplexed stream)
+      const cleaned = line.slice(8);
+
+      // Remover ANSI escape codes
+      const noAnsi = cleaned.replace(/\x1b\[[0-9;]*m/g, '');
+
+      // Extraer timestamp ISO
+      const match = noAnsi.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s*(.*)/);
+      if (!match) continue;
+
+      const message = match[2].trim();
+      if (!message) continue;
+
+      result.push({
+        timestamp: match[1],
+        stream: streamType,
+        message,
+      });
+    }
+
+    return result;
+  }
+
   async getDockerLogs() {
     const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
 
-    const logs: { [key: string]: string } = {};
+    const logs: { [key: string]: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] } = {};
 
     for (const container of containers) {
       const containerInstance = this.docker.getContainer(container.Id);
@@ -27,13 +60,14 @@ export class DashboardService {
         stdout: true,
         stderr: true,
         follow: false,
-        tail: 100, // Get the last 100 lines,
+        tail: 100,
         timestamps: true,
       });
 
-      logs[container.Names?.[0]?.replace('/', '') ?? 'unknown'] = logStream.toString('utf-8');
+      const name = container.Names?.[0]?.replace('/', '') ?? 'unknown';
+      logs[name] = this.parseDockerLogs(logStream.toString('utf-8'));
     }
-    
+
     return logs;
   }
 
@@ -114,7 +148,6 @@ export class DashboardService {
     try{
       const logs = await this.getDockerLogs()
       const data = JSON.stringify(logs)
-      console.log(data)
       if (data !== this.lastData) {
         this.logger.log('Docker logs changed, emitting update')
         this.dockerLogsGateway.emitDocketLogsUpdate(logs)
