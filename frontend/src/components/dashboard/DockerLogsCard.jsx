@@ -20,7 +20,7 @@ export default function DockerLogsCard() {
 
   if (!connected || dockerLogs.length === 0) {
     return (
-      <Card className="w-full mx-5 p-4">
+      <Card className="md:mx-5 p-1 md:p-4">
         <div className="w-full h-full flex flex-col justify-center items-center gap-2 py-24">
           <Loader />
           <h3 className="text-sm text-gray-400">Cargando logs . . .</h3>

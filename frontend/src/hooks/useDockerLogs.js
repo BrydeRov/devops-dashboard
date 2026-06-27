@@ -5,7 +5,7 @@ const backendURL = import.meta.env.VITE_BACKEND_URL
 const socket = io(backendURL, { transports: ['websocket'] })
 
 export function useDockerLogs() {
-    const [dockerLogs, setDockerLogs] = useState({})  // objeto, no array
+    const [dockerLogs, setDockerLogs] = useState({})
     const [connected, setConnected] = useState(false)
 
     useEffect(() => {
@@ -13,7 +13,7 @@ export function useDockerLogs() {
         socket.on('disconnect', () => setConnected(false))
 
         socket.on('dockerlogs_update', (data) => {
-        setDockerLogs(data)  // data ya es { "container-name": [...] }
+        setDockerLogs(data)
         })
 
         return () => {

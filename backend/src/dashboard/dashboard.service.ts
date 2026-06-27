@@ -23,17 +23,11 @@ export class DashboardService {
     for (const line of lines) {
       if (!line || line.length < 8) continue;
 
-      // Detectar stream type del primer byte ANTES de limpiar
       const streamType = line.charCodeAt(0) === 2 ? 'stderr' : 'stdout';
-
-      // Remover header binario de 8 bytes (Docker multiplexed stream)
       const cleaned = line.slice(8);
-
-      // Remover ANSI escape codes
       const noAnsi = cleaned.replace(/\x1b\[[0-9;]*m/g, '');
-
-      // Extraer timestamp ISO
       const match = noAnsi.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s*(.*)/);
+
       if (!match) continue;
 
       const message = match[2].trim();
@@ -143,7 +137,7 @@ export class DashboardService {
     }
   }
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron(CronExpression.EVERY_5_SECONDS)
   async checkDockerLogs() {
     try{
       const logs = await this.getDockerLogs()
