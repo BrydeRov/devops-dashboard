@@ -3,10 +3,10 @@ import { useEffect, useRef } from "react"
 export default function TerminalLogs({ logs = [], containerName = "" }) {
   const bottomRef = useRef(null)
 
-  // Auto-scroll al último log
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
+  // // Auto-scroll al último log
+  // useEffect(() => {
+  //   bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // }, [logs])
 
   const getColor = (stream, message) => {
     if (stream === 'stderr') return 'text-red-400'
@@ -28,10 +28,10 @@ export default function TerminalLogs({ logs = [], containerName = "" }) {
 
       {/* Log content */}
       <div className="max-h-100 overflow-y-auto p-3 font-mono text-xs space-y-0.5">
-        {logs.length === 0 ? (
+        {logs?.length === 0 ? (
           <span className="text-gray-600">No logs available...</span>
         ) : (
-          logs.map((log, i) => (
+          logs?.map((log, i) => (
             <div key={i} className="flex gap-3 leading-5">
               <span className="text-gray-600 shrink-0 select-none">
                 {new Date(log.timestamp).toLocaleTimeString()}

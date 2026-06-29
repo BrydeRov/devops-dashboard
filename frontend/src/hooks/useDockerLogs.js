@@ -9,17 +9,22 @@ export function useDockerLogs() {
     const [connected, setConnected] = useState(false)
 
     useEffect(() => {
-        socket.on('connect', () => setConnected(true))
+        socket.on('connect', (data) => {
+            setConnected(true)
+            console.log('CONNECTED TO SOCKET.IO SERVER')
+        })
         socket.on('disconnect', () => setConnected(false))
-
+        
         socket.on('dockerlogs_update', (data) => {
-        setDockerLogs(data)
+            setConnected(true)
+            console.log('UPDATE DATA SOCKET.IO SERVER')
+            setDockerLogs(data)
         })
 
         return () => {
-        socket.off('connect')
-        socket.off('disconnect')
-        socket.off('dockerlogs_update')
+            socket.off('connect')
+            socket.off('disconnect')
+            socket.off('dockerlogs_update')
         }
     }, [])
 

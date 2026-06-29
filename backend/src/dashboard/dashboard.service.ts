@@ -13,7 +13,7 @@ export class DashboardService {
   private docker: Docker;
 
   constructor(private pipelinesGateway: PipelinesGateway, private dockerLogsGateway: DockerLogsGateway) {
-    this.docker = new Docker({ socketPath: '/var/run/docker.sock' } as Docker.DockerOptions);
+    this.docker = new Docker({ socketPath:  process.env.SOCKET_PATH } as Docker.DockerOptions);
   }
 
   private parseDockerLogs(raw: string): { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] {
@@ -144,10 +144,11 @@ export class DashboardService {
       const data = JSON.stringify(logs)
       if (data !== this.lastData) {
         this.logger.log('Docker logs changed, emitting update')
-        this.dockerLogsGateway.emitDocketLogsUpdate(logs)
+        this.dockerLogsGateway.emitDockerLogsUpdate(logs)
       }
     }catch(error){
       this.logger.error('Error checking docker logs')
+      this.logger.error(error)
     }
   }
 }

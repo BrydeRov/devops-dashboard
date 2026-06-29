@@ -6,6 +6,7 @@ import { DockerLogsGateway } from './dockerLogs.gateway';
 
 @Module({
   controllers: [DashboardController],
-  providers: [DashboardService, PipelinesGateway, DockerLogsGateway]
+  providers: [DashboardService, PipelinesGateway, DockerLogsGateway],
+  exports: [DashboardService],
 })
 export class DashboardModule {}
