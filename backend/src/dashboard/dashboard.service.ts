@@ -104,7 +104,7 @@ export class DashboardService {
     const { data } = await octokit.actions.listWorkflowRunsForRepo({
       owner: process?.env.GITHUB_OWNER || 'default',
       repo: process?.env.GITHUB_REPO || 'somerepo',
-      per_page: 5
+      // per_page: 5
     });
 
     return data.workflow_runs.map(run => ({
