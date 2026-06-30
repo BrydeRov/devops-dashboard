@@ -8,9 +8,9 @@ import TerminalLogs from "@/components/ui/TerminalLogs";
 import Loader from "@/components/ui/loader";
 
 export default function DockerLogsCard() {
-  const { dockerLogs, connected } = useDockerLogs()
+  const { dockerLogs, connected, goLive, stopLive } = useDockerLogs()
   const [selectedTab, setSelectedTab] = useState(null)
-  const [connectionType, setConnectionType] = useState(null) // Default to 'polling';
+  const [connectionType, setConnectionType] = useState(null)
 
   useEffect(() => {
     if (dockerLogs.length > 0 && !selectedTab) {
@@ -20,14 +20,30 @@ export default function DockerLogsCard() {
 
   useEffect(() => {
     const localTypeConnection = localStorage.getItem('localTypeConnection')
-    if(localTypeConnection) {
+    if (localTypeConnection) {
       setConnectionType(localTypeConnection)
-    }else {
+    } else {
       localStorage.setItem('localTypeConnection', 'polling')
+      setConnectionType('polling')
     }
-  },[])
+  }, [])
 
-  // Find the selected container by name, not by index
+  // Manage live subscription based on connectionType + selectedTab
+  useEffect(() => {
+    if (!selectedTab) return
+
+    if (connectionType === 'Live') {
+      goLive(selectedTab)
+    } else {
+      stopLive()
+    }
+
+    // Stop live stream on unmount or before switching
+    return () => {
+      if (connectionType === 'Live') stopLive()
+    }
+  }, [connectionType, selectedTab])
+
   const activeContainer = dockerLogs?.find(c => c.name === selectedTab)
 
   if (!connected || dockerLogs?.length === 0) {
@@ -52,27 +68,35 @@ export default function DockerLogsCard() {
               </TabsTrigger>
             ))}
           </TabsList>
-          
-          <ButtonGroup aria-label="Button group">
-            <Button 
-              className={`${connectionType == 'polling' ? 'bg-yellow-700' : 'bg-gray-800'} hover:bg-yellow-600 rounded-md`}
-              onClick={() => {
-                setConnectionType('polling')
-                localStorage.setItem('localTypeConnection', 'polling')
-              }}
-            >
-              Polling
-            </Button>
-            <Button 
-              className={`${connectionType == 'Live' ? 'bg-blue-500' : 'bg-gray-800'} hover:bg-blue-400 rounded-md`}
-              onClick={() => {
-                setConnectionType('Live')
-                localStorage.setItem('localTypeConnection', 'Live')
-              }}
-            >
-              Live
-            </Button>
-          </ButtonGroup>
+
+          <div className="flex items-center gap-2">
+            {connectionType === 'Live' && (
+              <span className="flex items-center gap-1 text-xs text-red-400">
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                Live
+              </span>
+            )}
+            <ButtonGroup aria-label="Button group">
+              <Button
+                className={`${connectionType == 'polling' ? 'bg-yellow-700' : 'bg-gray-800'} hover:bg-yellow-600 rounded-md`}
+                onClick={() => {
+                  setConnectionType('polling')
+                  localStorage.setItem('localTypeConnection', 'polling')
+                }}
+              >
+                Polling
+              </Button>
+              <Button
+                className={`${connectionType == 'Live' ? 'bg-blue-500' : 'bg-gray-800'} hover:bg-blue-400 rounded-md`}
+                onClick={() => {
+                  setConnectionType('Live')
+                  localStorage.setItem('localTypeConnection', 'Live')
+                }}
+              >
+                Live
+              </Button>
+            </ButtonGroup>
+          </div>
         </div>
 
         <TabsContent value={selectedTab} className="w-full">

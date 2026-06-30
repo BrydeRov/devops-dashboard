@@ -20,6 +20,7 @@ export function usePipelines() {
         })
 
         socket.on('pipelines_update', (data) => {
+            setConnected(true)
             setPipelines(Array.isArray(data) ? data : [])  // ← guard
         })
 

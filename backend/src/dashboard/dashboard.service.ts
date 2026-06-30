@@ -121,6 +121,38 @@ export class DashboardService {
     }))
   }
 
+  async streamContainerLogs(
+      containerName: string,
+      onLine: (line: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }) => void,
+    ) {
+      const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
+      const found = containers.find(
+        (c) => c.Names?.[0]?.replace('/', '') === containerName,
+      );
+      if (!found) throw new Error(`Container ${containerName} not found`);
+
+      const containerInstance = this.docker.getContainer(found.Id);
+
+      const logStream = await containerInstance.logs({
+        stdout: true,
+        stderr: true,
+        follow: true,   // <-- keeps connection open, real live stream
+        timestamps: true,
+        tail: 0,         // don't replay old logs, only new ones from now
+      });
+
+      logStream.on('data', (chunk: Buffer) => {
+        const parsed = this.parseDockerLogs(chunk.toString('utf-8'));
+        parsed.forEach((line) => onLine(line));
+      });
+
+      logStream.on('error', (err) => {
+        this.logger.error('Live log stream error', err);
+      });
+
+      return logStream;
+    }
+
   @Cron(CronExpression.EVERY_30_SECONDS)
   async checkPipelines() {
     this.logger.log('Checking pipelines . . .')
