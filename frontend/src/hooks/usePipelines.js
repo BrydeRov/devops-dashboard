@@ -9,15 +9,9 @@ export function usePipelines() {
     const [connected, setConnected] = useState(false)
 
     useEffect(() => {
-        socket.on('connect', () => {
-            // console.log('WebSocket Connected')
-            setConnected(true)
-        })
+        socket.on('connect', () => setConnected(true))
 
-        socket.on('disconnect', () => {
-            // console.log('WebSocket disconnected')
-            setConnected(false)
-        })
+        socket.on('disconnect', () => setConnected(false))
 
         socket.on('pipelines_update', (data) => {
             setConnected(true)
