@@ -15,7 +15,6 @@ export class UsersController {
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   getDashboard(@Req() req) {
-    console.log(req)
     return this.usersService.findById(req.user.userId)
   }
 }
