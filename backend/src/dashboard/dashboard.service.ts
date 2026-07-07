@@ -5,16 +5,34 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PipelinesGateway } from './pipelines.gateway';
 import { DockerLogsGateway } from './dockerLogs.gateway';
 import Docker from 'dockerode';
+import * as fs from 'fs';
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const RENDER_API_KEY = process.env.RENDER_API_KEY;
+const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+const RENDER_BASE_URL = 'https://api.render.com/v1';
 
 @Injectable()
 export class DashboardService {
   private logger = new Logger('DashboardService')
   private lastData: string = ''
-  private docker: Docker;
+  private docker: Docker | null = null;
+  private dockerAvailable: boolean = false;
 
   constructor(private pipelinesGateway: PipelinesGateway, private dockerLogsGateway: DockerLogsGateway) {
-    this.docker = new Docker({ socketPath:  process.env.SOCKET_PATH } as Docker.DockerOptions);
+    const socketPath = process.env.SOCKET_PATH;
+
+    if (!IS_PRODUCTION && socketPath && fs.existsSync(socketPath)) {
+      this.docker = new Docker({ socketPath } as Docker.DockerOptions);
+      this.dockerAvailable = true;
+      this.logger.log('🐳 Docker available — using live Docker data');
+    } else {
+      this.dockerAvailable = false;
+      this.logger.warn('☁️ Docker not available — using Render API');
+    }
   }
+
+  // ─── DOCKER LOG PARSING ──────────────────────────────────────────────────────
 
   private parseDockerLogs(raw: string): { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] {
     const lines = raw.split('\n');
@@ -29,27 +47,145 @@ export class DashboardService {
       const match = noAnsi.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s*(.*)/);
 
       if (!match) continue;
-
       const message = match[2].trim();
       if (!message) continue;
 
-      result.push({
-        timestamp: match[1],
-        stream: streamType,
-        message,
-      });
+      result.push({ timestamp: match[1], stream: streamType, message });
     }
 
     return result;
   }
 
-  async getDockerLogs() {
-    const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
+  // ─── RENDER API ──────────────────────────────────────────────────────────────
 
+  private async renderFetch(path: string) {
+    const res = await fetch(`${RENDER_BASE_URL}${path}`, {
+      headers: {
+        'Authorization': `Bearer ${RENDER_API_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error(`Render API error: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
+
+  private async getRenderLogs(): Promise<{ [key: string]: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] }> {
+    try {
+      const data = await this.renderFetch(`/services/${RENDER_SERVICE_ID}/logs?limit=100`);
+
+      const backendLogs = (data.logs ?? []).map((log: any) => ({
+        timestamp: log.timestamp,
+        stream: (log.type === 'stderr' ? 'stderr' : 'stdout') as 'stdout' | 'stderr',
+        message: log.message,
+      }));
+
+      return {
+        'nestjsreactdocker_project-backend-1': backendLogs,
+        'nestjsreactdocker_project-frontend-1': [{
+          timestamp: new Date().toISOString(),
+          stream: 'stdout' as const,
+          message: 'ℹ️ Static site — logs not available on Render free tier',
+        }],
+        'nestjsreactdocker_project-postgres-1': [{
+          timestamp: new Date().toISOString(),
+          stream: 'stdout' as const,
+          message: 'ℹ️ Managed PostgreSQL — logs not available on Render free tier',
+        }],
+      };
+    } catch (error) {
+      this.logger.error('Failed to fetch Render logs', error);
+      return {};
+    }
+  }
+
+  private async getRenderContainers() {
+    try {
+      const data = await this.renderFetch(`/services/${RENDER_SERVICE_ID}`);
+      return [{
+        id: RENDER_SERVICE_ID?.slice(-12) ?? 'render-svc',
+        name: data.name ?? 'nestjsreactdocker_project-backend-1',
+        status: `Up (${data.serviceDetails?.region ?? 'oregon'})`,
+        state: data.suspended === 'not_suspended' ? 'running' : 'suspended',
+        image: 'render/docker',
+      }];
+    } catch (error) {
+      this.logger.error('Failed to fetch Render service info', error);
+      return [];
+    }
+  }
+
+  // ─── PUBLIC METHODS ───────────────────────────────────────────────────────────
+
+  async getDockerLogs() {
+    if (this.dockerAvailable) {
+      return this.getLocalDockerLogs();
+    }
+    return this.getRenderLogs();
+  }
+
+  async getContainers() {
+    if (this.dockerAvailable) {
+      return this.getLocalContainers();
+    }
+    return this.getRenderContainers();
+  }
+
+  async streamContainerLogs(
+    containerName: string,
+    onLine: (line: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }) => void,
+  ) {
+    if (!this.dockerAvailable || !this.docker) {
+      // In production, poll Render logs every 3s as a "live" approximation
+      const interval = setInterval(async () => {
+        try {
+          const data = await this.getRenderLogs();
+          const logs = data['nestjsreactdocker_project-backend-1'] ?? [];
+          logs.slice(-5).forEach(onLine); // emit last 5 lines
+        } catch (e) {
+          this.logger.error('Render live poll error', e);
+        }
+      }, 3000);
+
+      // Return a fake stream-like object so DockerLogsGateway can call .destroy()
+      return { destroy: () => clearInterval(interval) };
+    }
+
+    // Local Docker live streaming
+    const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
+    const found = containers.find(
+      (c) => c.Names?.[0]?.replace('/', '') === containerName,
+    );
+    if (!found) throw new Error(`Container ${containerName} not found`);
+
+    const containerInstance = this.docker.getContainer(found.Id);
+    const logStream = await containerInstance.logs({
+      stdout: true,
+      stderr: true,
+      follow: true,
+      timestamps: true,
+      tail: 0,
+    });
+
+    logStream.on('data', (chunk: Buffer) => {
+      const parsed = this.parseDockerLogs(chunk.toString('utf-8'));
+      parsed.forEach((line) => onLine(line));
+    });
+
+    logStream.on('error', (err) => {
+      this.logger.error('Live log stream error', err);
+    });
+
+    return logStream;
+  }
+
+  // ─── LOCAL DOCKER ─────────────────────────────────────────────────────────────
+
+  private async getLocalDockerLogs() {
+    const containers: Docker.ContainerInfo[] = await this.docker!.listContainers({ all: true });
     const logs: { [key: string]: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] } = {};
 
     for (const container of containers) {
-      const containerInstance = this.docker.getContainer(container.Id);
+      const containerInstance = this.docker!.getContainer(container.Id);
       const logStream = await containerInstance.logs({
         stdout: true,
         stderr: true,
@@ -65,8 +201,8 @@ export class DashboardService {
     return logs;
   }
 
-  async getContainers() {
-    const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
+  private async getLocalContainers() {
+    const containers: Docker.ContainerInfo[] = await this.docker!.listContainers({ all: true });
 
     return containers.map((c: Docker.ContainerInfo) => ({
       id: c.Id.slice(0, 12),
@@ -76,6 +212,8 @@ export class DashboardService {
       image: c.Image ?? '',
     }));
   }
+
+  // ─── METRICS ──────────────────────────────────────────────────────────────────
 
   async getMetrics() {
     const [cpu, memory, disk] = await Promise.all([
@@ -96,6 +234,8 @@ export class DashboardService {
     };
   }
 
+  // ─── PIPELINES ────────────────────────────────────────────────────────────────
+
   async getPipelines() {
     const octokit = new Octokit({
       auth: process?.env.GITHUB_TOKEN || 'token'
@@ -104,7 +244,6 @@ export class DashboardService {
     const { data } = await octokit.actions.listWorkflowRunsForRepo({
       owner: process?.env.GITHUB_OWNER || 'default',
       repo: process?.env.GITHUB_REPO || 'somerepo',
-      // per_page: 5
     });
 
     return data.workflow_runs.map(run => ({
@@ -121,37 +260,7 @@ export class DashboardService {
     }))
   }
 
-  async streamContainerLogs(
-      containerName: string,
-      onLine: (line: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }) => void,
-    ) {
-      const containers: Docker.ContainerInfo[] = await this.docker.listContainers({ all: true });
-      const found = containers.find(
-        (c) => c.Names?.[0]?.replace('/', '') === containerName,
-      );
-      if (!found) throw new Error(`Container ${containerName} not found`);
-
-      const containerInstance = this.docker.getContainer(found.Id);
-
-      const logStream = await containerInstance.logs({
-        stdout: true,
-        stderr: true,
-        follow: true,   // <-- keeps connection open, real live stream
-        timestamps: true,
-        tail: 0,         // don't replay old logs, only new ones from now
-      });
-
-      logStream.on('data', (chunk: Buffer) => {
-        const parsed = this.parseDockerLogs(chunk.toString('utf-8'));
-        parsed.forEach((line) => onLine(line));
-      });
-
-      logStream.on('error', (err) => {
-        this.logger.error('Live log stream error', err);
-      });
-
-      return logStream;
-    }
+  // ─── CRON JOBS ────────────────────────────────────────────────────────────────
 
   @Cron(CronExpression.EVERY_30_SECONDS)
   async checkPipelines() {
@@ -171,14 +280,14 @@ export class DashboardService {
 
   @Cron(CronExpression.EVERY_5_SECONDS)
   async checkDockerLogs() {
-    try{
+    try {
       const logs = await this.getDockerLogs()
       const data = JSON.stringify(logs)
       if (data !== this.lastData) {
         this.logger.log('Docker logs changed, emitting update')
         this.dockerLogsGateway.emitDockerLogsUpdate(logs)
       }
-    }catch(error){
+    } catch (error) {
       this.logger.error('Error checking docker logs')
       this.logger.error(error)
     }
