@@ -58,25 +58,25 @@ export class DashboardService {
 
   // ─── RENDER API ──────────────────────────────────────────────────────────────
 
-  private async renderFetch(path: string) {
-    const res = await fetch(`${RENDER_BASE_URL}${path}`, {
-      headers: {
-        'Authorization': `Bearer ${RENDER_API_KEY}`,
-        'Accept': 'application/json',
-      },
-    });
-    if (!res.ok) throw new Error(`Render API error: ${res.status} ${res.statusText}`);
-    return res.json();
-  }
-
-  private async getRenderLogs(): Promise<{ [key: string]: { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] }> {
+  private async getRenderLogs() {
     try {
-      const data = await this.renderFetch(`/services/${RENDER_SERVICE_ID}/logs?limit=100`);
+      const res = await fetch(
+        `${RENDER_BASE_URL}/logs?resource[]=${RENDER_SERVICE_ID}&limit=100`,
+        {
+          headers: {
+            'Authorization': `Bearer ${RENDER_API_KEY}`,
+            'Accept': 'application/json',
+          },
+        }
+      );
 
-      const backendLogs = (data.logs ?? []).map((log: any) => ({
-        timestamp: log.timestamp,
-        stream: (log.type === 'stderr' ? 'stderr' : 'stdout') as 'stdout' | 'stderr',
-        message: log.message,
+      if (!res.ok) throw new Error(`Render API error: ${res.status}`);
+      const data = await res.json();
+
+      const backendLogs = (data ?? []).map((item: any) => ({
+        timestamp: item.timestamp,
+        stream: 'stdout' as const,
+        message: item.message,
       }));
 
       return {
