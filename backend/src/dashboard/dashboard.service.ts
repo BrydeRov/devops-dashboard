@@ -32,7 +32,25 @@ export class DashboardService {
     }
   }
 
-  // ─── DOCKER LOG PARSING ──────────────────────────────────────────────────────
+  private getRenderStream(
+    labels: { name: string; value: string }[]
+  ): 'stdout' | 'stderr' {
+    const level = labels.find(l => l.name === 'level')?.value;
+
+    return level === 'error'
+      ? 'stderr'
+      : 'stdout';
+  }
+
+  // ─── DOCKER AND RENDERAPI LOG PARSING ──────────────────────────────────────────────────────
+
+  private parseRenderLogs(logsResponse: any) {
+    return (logsResponse?.logs ?? []).map((log: any) => ({
+      timestamp: log.timestamp,
+      stream: this.getRenderStream(log.labels),
+      message: log.message.replace(/\x1b\[[0-9;]*m/g, ''),
+    }));
+  }
 
   private parseDockerLogs(raw: string): { timestamp: string; stream: 'stdout' | 'stderr'; message: string }[] {
     const lines = raw.split('\n');
@@ -58,9 +76,29 @@ export class DashboardService {
 
   // ─── RENDER API ──────────────────────────────────────────────────────────────
 
-  private async getRenderLogs() {
+  private async getRenderServerData() {
     try {
       const res = await fetch(
+        `${RENDER_BASE_URL}/services/${RENDER_SERVICE_ID}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${RENDER_API_KEY}`,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!res.ok) throw new Error(`Render API error: ${res.status}`);
+      return await res.json();
+    } catch (error) {
+      this.logger.error('Failed to fetch Render service info', error);
+      return null;
+    }
+  }
+
+  private async getRenderLogs() {
+    try {
+      const resData = await fetch(
         `${RENDER_BASE_URL}/logs?ownerId=${RENDER_OWNER_ID}&resource=${RENDER_SERVICE_ID}&limit=100`,
         {
           headers: {
@@ -70,30 +108,18 @@ export class DashboardService {
         }
       );
 
-      const resServerData = await fetch(
-        `${RENDER_BASE_URL}/services/${RENDER_SERVICE_ID}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${RENDER_API_KEY}`,
-            'Accept': 'application/json'
-          }
-        }
-      )
-
-      if (!res.ok && !resServerData.ok) throw new Error(`Render API error: ${res.status}`);
-      const data = { serverData: await resServerData.json(), logs: await res.json() };
-
-     const backendLogs = Array.isArray(data?.logs?.logs)
-      ? data.logs.logs.map((item: any) => ({
-          timestamp: item.timestamp,
-          stream: 'stdout' as const,
-          message: item.message,
-        }))
-      : [];
+      if (!resData.ok) throw new Error(`Render API error: ${resData.status}`);
+      const dataLogs = await resData.json();
+      
+      const backendLogs = Array.isArray(dataLogs?.logs)
+        ? dataLogs.logs.map((item: any) => ({
+            timestamp: item.timestamp,
+            stream: 'stdout' as const,
+            message: item.message,
+          }))
+        : [];
 
       return {
-        serverData: data?.serverData,
-        logs: {
           'nestjsreactdocker_project-backend-1': backendLogs,
           'nestjsreactdocker_project-frontend-1': [{
             timestamp: new Date().toISOString(),
@@ -106,7 +132,6 @@ export class DashboardService {
             message: 'ℹ️ Managed PostgreSQL — logs not available on Render free tier',
           }]
         }
-      };
     } catch (error) {
       this.logger.error('Failed to fetch Render logs', error);
       return {};
@@ -115,7 +140,7 @@ export class DashboardService {
 
   private async getRenderContainers() {
     try {
-      const data = await this.getRenderLogs();
+      const data = await this.getRenderServerData();
       return [{
         id: RENDER_SERVICE_ID?.slice(-12) ?? 'render-svc',
         name: data?.serverData?.name,
@@ -151,14 +176,33 @@ export class DashboardService {
   ) {
     if (!this.dockerAvailable || !this.docker) {
       // In production, poll Render logs every 3s as a "live" approximation
-      const interval = setInterval(async () => {
-        try {
-          const data = await this.getRenderLogs();
-          const logs = data['nestjsreactdocker_project-backend-1'] ?? [];
-          logs.slice(-5).forEach(onLine); // emit last 5 lines
-        } catch (e) {
-          this.logger.error('Render live poll error', e);
-        }
+      const interval = setInterval(() => {
+        void (() => {
+          try {
+            type RenderLogLine = {
+              timestamp: string;
+              stream: 'stdout' | 'stderr';
+              message: string;
+            };
+            const raw: RenderLogLine[] | Record<string, RenderLogLine[]> = [
+              {
+                timestamp: new Date().toISOString(),
+                stream: 'stdout' as const,
+                message: 'ℹ️ Static site — logs not available on Render free tier',
+              },
+            ];
+            let logsArray: RenderLogLine[] = [];
+            if (Array.isArray(raw)) {
+              logsArray = raw;
+            } else {
+              // raw may be a record of arrays keyed by container name
+              logsArray = Object.values(raw).flat() as RenderLogLine[];
+            }
+            logsArray.slice(-5).forEach(onLine); // emit last 5 lines
+          } catch (e) {
+            this.logger.error('Render live poll error', e);
+          }
+        })();
       }, 3000);
 
       // Return a fake stream-like object so DockerLogsGateway can call .destroy()
@@ -182,7 +226,7 @@ export class DashboardService {
     });
 
     logStream.on('data', (chunk: Buffer) => {
-      const parsed = this.parseDockerLogs(chunk.toString('utf-8'));
+      const parsed = process.env.NODE_ENV === 'production' ? this.parseRenderLogs(chunk.toString('utf-8')) : this.parseDockerLogs(chunk.toString('utf-8'));
       parsed.forEach((line) => onLine(line));
     });
 

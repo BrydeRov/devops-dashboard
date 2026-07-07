@@ -57,6 +57,8 @@ export default function DockerLogsCard() {
     )
   }
 
+  console.log(dockerLogs)
+
   return (
     <Card className="md:mx-5 p-1 px-2">
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">

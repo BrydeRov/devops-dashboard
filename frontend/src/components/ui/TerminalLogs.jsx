@@ -16,6 +16,8 @@ export default function TerminalLogs({ logs = [], containerName = "" }) {
     return 'text-gray-300'
   }
 
+  console.log(logs)
+
   return (
     <div className="bg-[#0d0d0d] rounded-lg border border-gray-800 overflow-hidden">
       {/* Terminal header bar */}
