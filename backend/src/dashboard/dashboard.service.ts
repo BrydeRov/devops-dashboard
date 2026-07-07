@@ -11,7 +11,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
 const RENDER_BASE_URL = 'https://api.render.com/v1';
-
+const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID;
 @Injectable()
 export class DashboardService {
   private logger = new Logger('DashboardService')
@@ -61,7 +61,7 @@ export class DashboardService {
   private async getRenderLogs() {
     try {
       const res = await fetch(
-        `${RENDER_BASE_URL}/logs?resource[]=${RENDER_SERVICE_ID}&limit=100`,
+        `${RENDER_BASE_URL}/logs?ownerId=${RENDER_OWNER_ID}&resource=${RENDER_SERVICE_ID}&limit=100`,
         {
           headers: {
             'Authorization': `Bearer ${RENDER_API_KEY}`,
@@ -70,27 +70,41 @@ export class DashboardService {
         }
       );
 
-      if (!res.ok) throw new Error(`Render API error: ${res.status}`);
-      const data = await res.json();
+      const resServerData = await fetch(
+        // https://api.render.com/v1/services/srv-xxxxxxx
+        `${RENDER_BASE_URL}/services/${RENDER_SERVICE_ID}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${RENDER_API_KEY}`,
+            'Accept': 'application/json'
+          }
+        }
+      )
 
-      const backendLogs = (data ?? []).map((item: any) => ({
+      if (!res.ok && !resServerData.ok) throw new Error(`Render API error: ${res.status}`);
+      const data = { serverData: await resServerData.json(), logs: await res.json() };
+
+      const backendLogs = data?.logs?.map((item: any) => ({
         timestamp: item.timestamp,
         stream: 'stdout' as const,
         message: item.message,
       }));
 
       return {
-        'nestjsreactdocker_project-backend-1': backendLogs,
-        'nestjsreactdocker_project-frontend-1': [{
-          timestamp: new Date().toISOString(),
-          stream: 'stdout' as const,
-          message: 'ℹ️ Static site — logs not available on Render free tier',
-        }],
-        'nestjsreactdocker_project-postgres-1': [{
-          timestamp: new Date().toISOString(),
-          stream: 'stdout' as const,
-          message: 'ℹ️ Managed PostgreSQL — logs not available on Render free tier',
-        }],
+        serverData: data?.serverData,
+        logs: {
+          'nestjsreactdocker_project-backend-1': backendLogs,
+          'nestjsreactdocker_project-frontend-1': [{
+            timestamp: new Date().toISOString(),
+            stream: 'stdout' as const,
+            message: 'ℹ️ Static site — logs not available on Render free tier',
+          }],
+          'nestjsreactdocker_project-postgres-1': [{
+            timestamp: new Date().toISOString(),
+            stream: 'stdout' as const,
+            message: 'ℹ️ Managed PostgreSQL — logs not available on Render free tier',
+          }]
+        }
       };
     } catch (error) {
       this.logger.error('Failed to fetch Render logs', error);
@@ -100,12 +114,12 @@ export class DashboardService {
 
   private async getRenderContainers() {
     try {
-      const data = await this.renderFetch(`/services/${RENDER_SERVICE_ID}`);
+      const data = await this.getRenderLogs();
       return [{
         id: RENDER_SERVICE_ID?.slice(-12) ?? 'render-svc',
-        name: data.name ?? 'nestjsreactdocker_project-backend-1',
-        status: `Up (${data.serviceDetails?.region ?? 'oregon'})`,
-        state: data.suspended === 'not_suspended' ? 'running' : 'suspended',
+        name: data?.serverData?.name,
+        status: `Up (${data?.serverData?.serviceDetails?.region ?? 'unknown'})`,
+        state: data?.serverData?.suspended === 'not_suspended' ? 'running' : 'suspended',
         image: 'render/docker',
       }];
     } catch (error) {
