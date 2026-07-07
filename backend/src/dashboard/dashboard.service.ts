@@ -71,7 +71,6 @@ export class DashboardService {
       );
 
       const resServerData = await fetch(
-        // https://api.render.com/v1/services/srv-xxxxxxx
         `${RENDER_BASE_URL}/services/${RENDER_SERVICE_ID}`,
         {
           headers: {
@@ -84,11 +83,13 @@ export class DashboardService {
       if (!res.ok && !resServerData.ok) throw new Error(`Render API error: ${res.status}`);
       const data = { serverData: await resServerData.json(), logs: await res.json() };
 
-      const backendLogs = data?.logs?.map((item: any) => ({
-        timestamp: item.timestamp,
-        stream: 'stdout' as const,
-        message: item.message,
-      }));
+     const backendLogs = Array.isArray(data?.logs?.logs)
+      ? data.logs.logs.map((item: any) => ({
+          timestamp: item.timestamp,
+          stream: 'stdout' as const,
+          message: item.message,
+        }))
+      : [];
 
       return {
         serverData: data?.serverData,
