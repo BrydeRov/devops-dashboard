@@ -1,2 +1,7 @@
 .env
 node_modules
+# Terraform
+terraform-localstack-practice/.terraform/
+terraform-localstack-practice/*.tfstate
+terraform-localstack-practice/*.tfstate.backup
+terraform-localstack-practice/.terraform.lock.hcl

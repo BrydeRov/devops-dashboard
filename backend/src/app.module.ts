@@ -25,7 +25,7 @@ import { MovementsModule } from './movements/movements.module';
           host: process.env.DATABASE_HOST || 'postgres',
           port: parseInt(process.env.DATABASE_PORT ?? '5432') || 5432,
           username: process.env.DATABASE_USER || 'user',
-          password: process.env.DATABASE_PASSWORD || 'pass',
+          password: process.env.DATABASE_PASSWORD || 'pswd',
           database: process.env.DATABASE_NAME || 'mydb',
         }),
       autoLoadEntities: true,

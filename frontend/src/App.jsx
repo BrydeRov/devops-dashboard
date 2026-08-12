@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useEffectEvent } from "react";
 import LoginCard from "./components/auth/LogInCard";
 import Layout from "@/components/dashboard/layout";
 import PipelinesCard from "./components/dashboard/PipelinesCard";
@@ -10,11 +10,17 @@ import ProductsPage from "./components/inventory/ProductsPage";
 import CategoriesPage from "./components/inventory/CategoriesPage";
 import SuppliersPage from "./components/inventory/SuppliersPage";
 import MovementsPage from "./components/inventory/MovementsPage";
+import {
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+} from "@/components/ui/progress"
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState("metrics");
+  const [progress, setProgress] = useState(0);
 
   const handleLogout = async () => {
     await fetch(`${import.meta.env.VITE_BACKEND_URL}/auth/logout`, {
@@ -35,12 +41,37 @@ export default function App() {
     } catch(error) {
       setUser(null)
     } finally {
-      setLoading(false)
+      setTimeout(() => {
+        setLoading(false)
+      }, 5000)
     }
   }
+  useEffect(() => { checkAuth() },[])
 
-  useEffect(() => { checkAuth() }, [])
-  if (loading) return <div>Loading...</div>
+  useEffect(() => {
+    if (!loading) {
+      setProgress(100)
+      return
+    }
+
+    setProgress(0)
+    const interval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 90) return prev
+        const increment = (90 - prev) * 0.2
+        return prev + Math.max(increment, 0.5)
+      })
+    }, 200)
+
+    return () => clearInterval(interval)
+  }, [loading])
+
+  if (loading) return <div className='flex h-screen w-screen justify-center'>
+    <Progress value={progress} className="my-auto">
+        <ProgressLabel>Loading . . .</ProgressLabel>
+        <ProgressValue />
+    </Progress>
+  </div>
   if (!user) return <LoginCard onLogin={checkAuth} />
 
   const renderPage = () => {

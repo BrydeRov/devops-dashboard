@@ -20,13 +20,17 @@ async function bootstrap() {
 
   app.use(cookieParser())
   app.enableCors({
-    origin: [
-      'http://localhost:5173', // React development server
-      'https://probable-happiness-gpq6p75wwgjfwpv5-5173.app.github.dev',
-        process.env.NODE_ENV == 'production' && 'https://nestjsreactdocker-project.onrender.com'
-    ], // Allow all origins for development
-    credentials: true, // Enable for JWT in cookies
-  });
+  origin: (origin, callback) => {
+    const allowed =
+      !origin ||
+      origin === 'http://localhost:5173' ||
+      origin === 'http://127.0.0.1:5173' ||
+      origin.endsWith('.app.github.dev') ||
+      (process.env.NODE_ENV === 'production' && origin === 'https://nestjsreactdocker-project.onrender.com');
+    callback(allowed ? null : new Error('No permitido por CORS'), allowed);
+  },
+  credentials: true,
+});
 
   await app.listen(3000, '0.0.0.0');
 }
